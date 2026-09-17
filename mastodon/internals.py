@@ -240,8 +240,9 @@ class Mastodon():
             if 'X-RateLimit-Remaining' in response_object.headers and do_ratelimiting:
                 self.ratelimit_remaining = int(
                     response_object.headers['X-RateLimit-Remaining'])
-                self.ratelimit_limit = int(
-                    response_object.headers['X-RateLimit-Limit'])
+                if 'X-RateLimit-Limit' in response_object.headers:
+                    self.ratelimit_limit = int(
+                        response_object.headers['X-RateLimit-Limit'])
 
                 # For gotosocial, we need an int representation, but for non-ints this would crash
                 try:
@@ -249,16 +250,20 @@ class Mastodon():
                 except:
                     ratelimit_intrep = None
 
+                # X-RateLimit-Reset is optional: some servers (e.g. Laravel-based ones like
+                # Pixelfed) only send it on 429 responses, not on every throttled response.
                 try:
                     if ratelimit_intrep is not None and ratelimit_intrep == response_object.headers['X-RateLimit-Reset']:
                         self.ratelimit_reset = int(
                             response_object.headers['X-RateLimit-Reset'])
-                    else:
+                    elif 'X-RateLimit-Reset' in response_object.headers:
                         ratelimit_reset_datetime = dateutil.parser.parse(response_object.headers['X-RateLimit-Reset'])
                         self.ratelimit_reset = self.__datetime_to_epoch(ratelimit_reset_datetime)
+                    else:
+                        self.ratelimit_reset = time.time() + 30
 
                     # Adjust server time to local clock
-                    if 'Date' in response_object.headers:
+                    if self.ratelimit_reset is not None and 'Date' in response_object.headers:
                         server_time_datetime = dateutil.parser.parse(response_object.headers['Date'])
                         server_time = self.__datetime_to_epoch(server_time_datetime)
                         server_time_diff = time.time() - server_time
